@@ -173,21 +173,6 @@
 		}
 	} while ((subrange = [self rangeOfString:@"&" options:NSBackwardsSearch range:range]).length != 0);
 	return finalString;
-} 
-
-#pragma mark Hashes
-
-- (NSString *)MD5String;
-{
-	const char *string = [self UTF8String];
-	unsigned char md5_result[16];
-	CC_MD5(string, [self lengthOfBytesUsingEncoding:NSUTF8StringEncoding], md5_result);
-    
-	return [NSString stringWithFormat:@"%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x",
-            md5_result[0], md5_result[1], md5_result[2], md5_result[3], 
-            md5_result[4], md5_result[5], md5_result[6], md5_result[7],
-            md5_result[8], md5_result[9], md5_result[10], md5_result[11],
-            md5_result[12], md5_result[13], md5_result[14], md5_result[15]];	
 }
 
 #pragma mark Encoding
@@ -215,12 +200,6 @@
 	}
     
 	return encoded;	
-}
-
-- (NSString *)base64String;
-{
-    NSData *stringData = [self dataUsingEncoding:NSUTF8StringEncoding];
-    return [stringData base64EncodedString];
 }
 
 #pragma mark UUIDs

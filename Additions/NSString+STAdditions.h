@@ -45,12 +45,8 @@
 // HTML Entities
 - (NSString *)stringByReplacingHTMLEntities;
 
-// Hashes
-- (NSString *)MD5String;
-
 // Encoding
 - (NSString *)base58String;
-- (NSString *)base64String;
 
 // UUIDs
 + (NSString *)UUIDString;

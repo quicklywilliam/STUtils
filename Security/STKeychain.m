@@ -29,182 +29,11 @@
 
 #import "STUtils.h"
 
-
-#define USE_MAC_KEYCHAIN_API !TARGET_OS_IPHONE || (TARGET_IPHONE_SIMULATOR && __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_3_0)
-
 static NSString *STKeychainErrorDomain = @"STKeychainErrorDomain";
-
-
-#if USE_MAC_KEYCHAIN_API
-@interface STKeychain ()
-+ (SecKeychainItemRef)getKeychainItemReferenceForUsername:(NSString *)username andServiceName:(NSString *)serviceName error:(NSError **)error;
-@end
-#endif
-
 
 @implementation STKeychain
 
-#if USE_MAC_KEYCHAIN_API
-
-+ (NSString *)getPasswordForUsername:(NSString *)username andServiceName:(NSString *)serviceName error:(NSError **)error {
-	if (!username || !serviceName) {
-		*error = [NSError errorWithDomain:STKeychainErrorDomain code:-2000 userInfo:nil];
-		return nil;
-	}
-	
-	SecKeychainItemRef item = [STKeychain getKeychainItemReferenceForUsername:username andServiceName:serviceName error:error];
-	if (*error || !item) {
-		return nil;
-	}
-	
-	// from Advanced Mac OS X Programming, ch. 16
-    UInt32 length;
-    char *password;
-    SecKeychainAttribute attributes[8];
-    SecKeychainAttributeList list;
-	
-    attributes[0].tag = kSecAccountItemAttr;
-    attributes[1].tag = kSecDescriptionItemAttr;
-    attributes[2].tag = kSecLabelItemAttr;
-    attributes[3].tag = kSecModDateItemAttr;
-    
-    list.count = 4;
-    list.attr = attributes;
-    
-    OSStatus status = SecKeychainItemCopyContent(item, NULL, &list, &length, (void **)&password);
-	
-	if (status != noErr) {
-		*error = [NSError errorWithDomain:STKeychainErrorDomain code:status userInfo:nil];
-		return nil;
-    }
-    
-	NSString *passwordString = nil;
-	
-	if (password != NULL) {
-		char passwordBuffer[1024];
-		
-		if (length > 1023) {
-			length = 1023;
-		}
-		strncpy(passwordBuffer, password, length);
-		
-		passwordBuffer[length] = '\0';
-		passwordString = [NSString stringWithCString:passwordBuffer encoding:NSUTF8StringEncoding];
-	}
-	
-	SecKeychainItemFreeContent(&list, password);
-    
-    CFRelease(item);
-    
-    return passwordString;
-}
-
-+ (BOOL)storeUsername:(NSString *)username andPassword:(NSString *)password forServiceName:(NSString *)serviceName updateExisting:(BOOL)updateExisting error:(NSError **)error {
-	if (!username || !password || !serviceName) {
-		*error = [NSError errorWithDomain:STKeychainErrorDomain code:-2000 userInfo:nil];
-		return NO;
-	}
-	
-	OSStatus status = noErr;
-	
-	SecKeychainItemRef item = [STKeychain getKeychainItemReferenceForUsername:username andServiceName:serviceName error:error];
-	
-	if (*error && [*error code] != noErr) {
-        return NO;
-	}
-	
-	*error = nil;
-	
-	if (item) {
-		status = SecKeychainItemModifyAttributesAndData(item,
-                                                        NULL,
-                                                        (UInt32)[password lengthOfBytesUsingEncoding:NSUTF8StringEncoding],
-                                                        [password UTF8String]);
-		
-		CFRelease(item);
-	} else {
-		status = SecKeychainAddGenericPassword(NULL,
-                                               (UInt32)[serviceName lengthOfBytesUsingEncoding:NSUTF8StringEncoding], 
-                                               [serviceName UTF8String],
-                                               (UInt32)[username lengthOfBytesUsingEncoding:NSUTF8StringEncoding],
-                                               [username UTF8String],
-                                               (UInt32)[password lengthOfBytesUsingEncoding:NSUTF8StringEncoding],
-                                               [password UTF8String],
-                                               NULL);
-	}
-	
-	if (status != noErr) {
-		*error = [NSError errorWithDomain:STKeychainErrorDomain code:status userInfo:nil];
-        return NO;
-	}
-    
-    return YES;
-}
-
-+ (BOOL)deleteItemForUsername:(NSString *)username andServiceName:(NSString *)serviceName error:(NSError **)error {
-	if (!username || !serviceName) {
-		*error = [NSError errorWithDomain:STKeychainErrorDomain code:2000 userInfo:nil];
-		return NO;
-	}
-	
-	*error = nil;
-	
-	SecKeychainItemRef item = [STKeychain getKeychainItemReferenceForUsername:username andServiceName:serviceName error:error];
-	
-	if (*error && [*error code] != noErr) {
-		return NO;
-	}
-	
-	OSStatus status;
-	
-	if (item) {
-		status = SecKeychainItemDelete(item);
-		
-		CFRelease(item);
-	}
-	
-	if (status != noErr) {
-		*error = [NSError errorWithDomain:STKeychainErrorDomain code:status userInfo:nil];
-        return NO;
-	}
-    
-    return YES;
-}
-
-// NOTE: Item reference passed back by reference must be released!
-+ (SecKeychainItemRef)getKeychainItemReferenceForUsername:(NSString *)username andServiceName:(NSString *)serviceName error:(NSError **)error {
-	if (!username || !serviceName) {
-		*error = [NSError errorWithDomain:STKeychainErrorDomain code:-2000 userInfo:nil];
-		return nil;
-	}
-	
-	*error = nil;
-    
-	SecKeychainItemRef item;
-	
-	OSStatus status = SecKeychainFindGenericPassword(NULL,
-                                                     (UInt32)[serviceName lengthOfBytesUsingEncoding:NSUTF8StringEncoding],
-                                                     [serviceName UTF8String],
-                                                     (UInt32)[username lengthOfBytesUsingEncoding:NSUTF8StringEncoding],
-                                                     [username UTF8String],
-                                                     NULL,
-                                                     NULL,
-                                                     &item);
-	
-	if (status != noErr) {
-		if (status != errSecItemNotFound) {
-			*error = [NSError errorWithDomain:STKeychainErrorDomain code:status userInfo:nil];
-		}
-		
-		return nil;		
-	}
-	
-	return item;
-}
-
-#else
-
-+ (NSString *)getPasswordForUsername:(NSString *)username andServiceName:(NSString *)serviceName error:(NSError **)error {
++ (NSData *)getPasswordDataForUsername:(NSString *)username andServiceName:(NSString *)serviceName error:(NSError **)error {
 	if (!username || !serviceName) {
 		if (error != nil) {
 			*error = [NSError errorWithDomain:STKeychainErrorDomain code:-2000 userInfo:nil];
@@ -271,28 +100,23 @@ static NSString *STKeychainErrorDomain = @"STKeychainErrorDomain";
 			// Something else went wrong. Simply return the normal Keychain API error code.
             *error = [NSError errorWithDomain:STKeychainErrorDomain code:status userInfo:nil];
 		}
-		
-		return nil;
+        
+        if (error != nil) {
+            // There is an existing item, but we weren't able to get password data for it for some reason,
+            // Possibly as a result of an item being incorrectly entered by the previous code.
+            // Set the -1999 error so the code above us can prompt the user again.
+            *error = [NSError errorWithDomain:STKeychainErrorDomain code:-1999 userInfo:nil];
+        }
+        
+        return nil;
 	}
     
-	NSString *password = nil;	
-    
-	if (resultData) {
-		password = [[NSString alloc] initWithData:resultData encoding:NSUTF8StringEncoding];
-	}
-	else if (error != nil) {
-		// There is an existing item, but we weren't able to get password data for it for some reason,
-		// Possibly as a result of an item being incorrectly entered by the previous code.
-		// Set the -1999 error so the code above us can prompt the user again.
-        *error = [NSError errorWithDomain:STKeychainErrorDomain code:-1999 userInfo:nil];
-	}
-    
-	return [password autorelease];
+	return resultData;
 }
 
-+ (BOOL)storeUsername:(NSString *)username andPassword:(NSString *)password forServiceName:(NSString *)serviceName updateExisting:(BOOL)updateExisting error:(NSError **)error 
++ (BOOL)storeUsername:(NSString *)username andPasswordData:(NSData *)passwordData forServiceName:(NSString *)serviceName updateExisting:(BOOL)updateExisting error:(NSError **)error;
 {		
-	if (!username || !password || !serviceName) {
+	if (!username || !passwordData || !serviceName) {
 		if (error != nil) {
 			*error = [NSError errorWithDomain:STKeychainErrorDomain code:-2000 userInfo:nil];
 		}
@@ -302,7 +126,7 @@ static NSString *STKeychainErrorDomain = @"STKeychainErrorDomain";
 	
 	// See if we already have a password entered for these credentials.
 	NSError *getError = nil;
-	NSString *existingPassword = [STKeychain getPasswordForUsername:username andServiceName:serviceName error:&getError];
+	NSData *existingPasswordData = [STKeychain getPasswordDataForUsername:username andServiceName:serviceName error:&getError];
     
 	if ([getError code] == -1999) {
 		// There is an existing entry without a password properly stored (possibly as a result of the previous incorrect version of this code.
@@ -331,28 +155,30 @@ static NSString *STKeychainErrorDomain = @"STKeychainErrorDomain";
 	
 	OSStatus status = noErr;
     
-	if (existingPassword) {
+	if (existingPasswordData) {
 		// We have an existing, properly entered item with a password.
 		// Update the existing item.
 		
-		if (![existingPassword isEqualToString:password] && updateExisting) {
+		if (![existingPasswordData isEqualToData:passwordData] && updateExisting) {
 			//Only update if we're allowed to update existing.  If not, simply do nothing.
-			
+
 			NSArray *keys = [[[NSArray alloc] initWithObjects:(NSString *)kSecClass, 
                               kSecAttrService, 
                               kSecAttrLabel, 
-                              kSecAttrAccount, 
+                              kSecAttrAccount,
+                              kSecAttrAccessible,
                               nil] autorelease];
 			
 			NSArray *objects = [[[NSArray alloc] initWithObjects:(NSString *)kSecClassGenericPassword, 
                                  serviceName,
                                  serviceName,
                                  username,
+                                 kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
                                  nil] autorelease];
 			
 			NSDictionary *query = [[[NSDictionary alloc] initWithObjects:objects forKeys:keys] autorelease];			
 			
-			status = SecItemUpdate((CFDictionaryRef)query, (CFDictionaryRef)[NSDictionary dictionaryWithObject:[password dataUsingEncoding:NSUTF8StringEncoding] forKey:(NSString *)kSecValueData]);
+			status = SecItemUpdate((CFDictionaryRef)query, (CFDictionaryRef)[NSDictionary dictionaryWithObject:passwordData forKey:(NSString *)kSecValueData]);
 		}
 	}
 	else {
@@ -363,14 +189,16 @@ static NSString *STKeychainErrorDomain = @"STKeychainErrorDomain";
                           kSecAttrService, 
                           kSecAttrLabel, 
                           kSecAttrAccount, 
-                          kSecValueData, 
+                          kSecValueData,
+                          kSecAttrAccessible,
                           nil] autorelease];
 		
 		NSArray *objects = [[[NSArray alloc] initWithObjects:(NSString *)kSecClassGenericPassword, 
                              serviceName,
                              serviceName,
                              username,
-                             [password dataUsingEncoding:NSUTF8StringEncoding],
+                             passwordData,
+                             kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
                              nil] autorelease];
 		
 		NSDictionary *query = [[[NSDictionary alloc] initWithObjects:objects forKeys:keys] autorelease];			
@@ -418,7 +246,5 @@ static NSString *STKeychainErrorDomain = @"STKeychainErrorDomain";
     
     return YES;
 }
-
-#endif
 
 @end
